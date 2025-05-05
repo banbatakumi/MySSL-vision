@@ -6,17 +6,17 @@ import socket  # socketモジュールを追加
 import json   # jsonモジュールを追加
 
 COLOR_RANGES = {
-    "red": ((0, 100, 80), (10, 150, 255)),
+    "red": ((0, 90, 80), (10, 130, 255)),
     # 赤色の後半範囲を追加 (HSVのH値は0-180で表現されるため、赤は0付近と180付近の両方に現れる可能性がある)
-    "red2": ((170, 100, 80), (180, 150, 255)),
-    "yellow": ((20, 200, 200), (40, 255, 255)),
-    "green": ((30, 90, 150), (60, 130, 255)),
-    "blue": ((90, 130, 150), (120, 170, 255)),
+    "red2": ((170, 90, 80), (180, 130, 255)),
+    "yellow": ((20, 130, 200), (40, 180, 255)),
+    "green": ((30, 50, 150), (60, 100, 255)),
+    "blue": ((90, 100, 150), (120, 150, 255)),
     "orange": ((10, 150, 150), (20, 255, 255)),
 }
 
 # --- UDP 通信設定 ---
-UDP_IP = "127.0.0.1"  # << ここを制御プログラムのIPアドレスに変更 >>
+UDP_IP = "192.168.50.86"  # << ここを制御プログラムのIPアドレスに変更 >>
 UDP_PORT = 50007     # << 任意だが、制御プログラムと合わせる >>
 # -------------------
 
@@ -203,25 +203,19 @@ def detect_robot_from_reds(red_list, green_list, middle_list, middle_name, frame
         # ロボットの中心座標 (ピクセル)
         cx, cy = int((r[0] + m[0] + g[0]) / 3), int((r[1] + m[1] + g[1]) / 3)
 
-        # 中心基準のピクセル座標
-        cx_centered = cx - center_x
-        cy_centered = cy - center_y
-
         # 向きの計算 (赤 -> 緑)
         angle_rad = math.atan2(g[1] - r[1], g[0] - r[0])
         angle_deg = math.degrees(angle_rad)
-        if angle_deg < 0:
+        if angle_deg < -180:
             angle_deg += 360
 
         label = f"{middle_name.upper()} robot"
 
         # --- CM単位の座標計算 ---
-        cx_cm, cy_cm, cx_centered_cm, cy_centered_cm = None, None, None, None
+        cx_centered_cm, cy_centered_cm = None, None
         if cm_scale is not None:
-            cx_cm = cx * cm_scale
-            cy_cm = cy * cm_scale
             cx_centered_cm = (cx - center_x) * cm_scale
-            cy_centered_cm = (cy - center_y) * cm_scale  # Y下向き正のままCMに変換
+            cy_centered_cm = (cy - center_y) * -cm_scale  # Y下向き正のままCMに変換
 
         # --- デバッグ/表示用の描画 ---
         cv2.circle(frame, r, 8, (0, 0, 255), -1)
@@ -246,7 +240,7 @@ def detect_robot_from_reds(red_list, green_list, middle_list, middle_name, frame
         cv2.circle(frame, (cx, cy), 5, (0, 0, 0), -1)
 
         # テキストで情報表示
-        text = f"{label} @({cx_centered},{cy_centered}) {angle_deg:.1f} deg"
+        text = f"{label} {angle_deg:.1f} deg"
         if cm_scale is not None:
             text += f" | CM:({cx_centered_cm:.1f},{cy_centered_cm:.1f})"
 
@@ -262,19 +256,15 @@ def detect_robot_from_reds(red_list, green_list, middle_list, middle_name, frame
         )
         # --- 描画終わり ---
 
-        # 検出結果をリストに追加 (CM座標も含む)
-        robot_info = {
-            "type": label,
-            "center_pixel": (cx, cy),
-            "center_relative_pixel": (cx_centered, cy_centered),
-            "orientation_deg": angle_deg,
-        }
         if cm_scale is not None:
-            robot_info["center_cm"] = (round(cx_cm, 2), round(cy_cm, 2))
-            robot_info["center_relative_cm"] = (
-                round(cx_centered_cm, 2), round(cy_centered_cm, 2))
+            robot_info = {
+                "type": label,
+                "orientation_deg": angle_deg,
+                "center_relative_cm": (
+                    round(cx_centered_cm, 2), round(cy_centered_cm, 2))
+            }
 
-        detected_robots.append(robot_info)
+            detected_robots.append(robot_info)
 
     return detected_robots
 
@@ -344,43 +334,34 @@ def main():
         # オレンジボールの検出位置に円とテキストを描画 (CM座標も計算)
         detected_orange_balls = []
         for (cx, cy) in orange_centers:
-            cx_centered = cx - center_x
-            cy_centered = cy - center_y
 
             # --- CM単位の座標計算 ---
-            cx_cm, cy_cm, cx_centered_cm, cy_centered_cm = None, None, None, None
+            cx_centered_cm, cy_centered_cm = None, None
             if cm_per_pixel_scale is not None:
-                cx_cm = cx * cm_per_pixel_scale
-                cy_cm = cy * cm_per_pixel_scale
                 cx_centered_cm = (cx - center_x) * cm_per_pixel_scale
                 cy_centered_cm = (cy - center_y) * \
-                    cm_per_pixel_scale  # Y下向き正のままCMに変換
+                    -cm_per_pixel_scale  # Y下向き正のままCMに変換
 
             cv2.circle(frame, (cx, cy), 15, (0, 165, 255), 3)
-            text = f"Orange Ball @({cx_centered},{cy_centered})"
+            text = "Orange Ball"
             if cm_per_pixel_scale is not None:
                 text += f" | CM:({cx_centered_cm:.1f},{cy_centered_cm:.1f})"
 
             cv2.putText(frame, text, (cx + 20, cy),
                         cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 0, 0), 1, cv2.LINE_AA)
 
-            # ボール情報をリストに追加 (CM座標も含む)
-            ball_info = {
-                "center_pixel": (cx, cy),
-                "center_relative_pixel": (cx_centered, cy_centered),
-            }
             if cm_per_pixel_scale is not None:
-                ball_info["center_cm"] = (round(cx_cm, 2), round(cy_cm, 2))
-                ball_info["center_relative_cm"] = (
-                    round(cx_centered_cm, 2), round(cy_centered_cm, 2))
+                ball_info = {
+                    "center_relative_cm": (
+                        round(cx_centered_cm, 2), round(cy_centered_cm, 2))
+                }
 
-            detected_orange_balls.append(ball_info)
+                detected_orange_balls.append(ball_info)
 
         # --- UDP送信データの準備 ---
         vision_data = {
             "timestamp": time.time(),
             "fps": fps,
-            "scale_cm_per_pixel": cm_per_pixel_scale,  # スケール値自体も送信
             "orange_balls": detected_orange_balls,
             "yellow_robots": yellow_robots,
             "blue_robots": blue_robots
@@ -394,8 +375,9 @@ def main():
         if sock:
             try:
                 sock.sendto(byte_data, (UDP_IP, UDP_PORT))
+                # print(f"Sent UDP data: {json_data}")  # デバッグ用
             except socket.error as e:
-                # print(f"Failed to send UDP data: {e}") # 頻繁に出る場合はコメントアウト
+                print(f"Failed to send UDP data: {e}")  # 頻繁に出る場合はコメントアウト
                 pass
 
         # --- 画面表示情報の描画 ---
@@ -462,7 +444,6 @@ def main():
         key = cv2.waitKey(1) & 0xFF
         if key == ord('q'):
             break
-        # 'r'キーでのリセット機能は左クリックでのリセットに置き換えたため削除
 
     # リソースの解放
     cap.release()
