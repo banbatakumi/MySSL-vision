@@ -25,7 +25,7 @@ def detect_robot_from_reds(red_list, green_list, middle_list, middle_name,
 
     Returns:
         list: 検出されたロボットの情報リスト。各要素は以下の辞書形式。
-              {'type': str, 'orientation_deg': float, 'center_relative_cm': tuple(float, float)}
+              {'type': str, 'angle': float, 'center_relative_cm': tuple(float, float)}
               cm_scaleがNoneの場合は空リストを返す。
     """
     height, width = frame_to_draw.shape[:2]
@@ -105,7 +105,7 @@ def detect_robot_from_reds(red_list, green_list, middle_list, middle_name,
         # 角度を -180 から 180 の範囲に正規化 (一般的なロボット制御系に合わせる場合)
         angle_deg = (angle_deg + 180) % 360 - 180  # Example normalization
 
-        robot_label = f"{middle_name.upper()} ROBOT"  # ラベル名を大文字に
+        robot_label = f"{middle_name.upper()} Robot"  # ラベル名を大文字に
 
         # --- CM単位の座標計算 ---
         cx_centered_cm, cy_centered_cm = None, None
@@ -126,10 +126,12 @@ def detect_robot_from_reds(red_list, green_list, middle_list, middle_name,
         # ロボットの中心から向きを示す矢印を描画
         arrow_length = 40
         # 矢印の向きは atan2 で計算した角度を使う
+        arrow_start_x = int(cx - arrow_length * math.cos(angle_rad))
+        arrow_start_y = int(cy - arrow_length * math.sin(angle_rad))
         arrow_end_x = int(cx + arrow_length * math.cos(angle_rad))
         arrow_end_y = int(cy + arrow_length * math.sin(angle_rad))
-        cv2.arrowedLine(frame_to_draw, (cx, cy), (arrow_end_x, arrow_end_y),
-                        (255, 0, 255), 2, tipLength=0.3)  # マゼンタ色の矢印
+        cv2.arrowedLine(frame_to_draw, (arrow_start_x, arrow_start_y), (arrow_end_x, arrow_end_y),
+                        (0, 0, 0), 5, tipLength=0.3)  # マゼンタ色の矢印
 
         # ロボットの中心に小さい黒丸を描画
         cv2.circle(frame_to_draw, (cx, cy), 5, (0, 0, 0), -1)
@@ -141,7 +143,10 @@ def detect_robot_from_reds(red_list, green_list, middle_list, middle_name,
             text += f" | CM:({cx_centered_cm:.1f},{cy_centered_cm:.1f})"
 
         # テキスト描画 (白文字、黒縁取り)
-        text_pos = (cx + 15, cy - 10)  # テキストの表示位置
+        height, width = frame_to_draw.shape[:2]
+        text_pos = text_pos = (10, height - 35)
+        if middle_name == "yellow":
+            text_pos = (10, height - 60)  # テキストの表示位置
         cv2.putText(frame_to_draw, text, text_pos,
                     cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 0, 0), 2, cv2.LINE_AA)  # 黒縁
         cv2.putText(frame_to_draw, text, text_pos,
@@ -152,8 +157,8 @@ def detect_robot_from_reds(red_list, green_list, middle_list, middle_name,
         if cm_scale is not None:
             robot_info = {
                 "type": robot_label,
-                "orientation_deg": round(angle_deg, 2),  # 小数点以下2桁で丸める
-                "center_relative_cm": (
+                "angle": round(angle_deg, 2),  # 小数点以下2桁で丸める
+                "pos": (
                     round(cx_centered_cm, 2), round(cy_centered_cm, 2))  # 小数点以下2桁
             }
             detected_robots_info.append(robot_info)

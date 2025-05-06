@@ -18,8 +18,10 @@ REAL_CALIBRATION_DISTANCE_CM = 50  # キャリブレーションで使用する2
 
 # --- 検出パラメータ ---
 ROBOT_MARKER_MIN_AREA = 800    # ロボットのマーカー(赤/緑/黄/青)として認識する最小面積 (ピクセル)
-ORANGE_BALL_MIN_AREA = 100     # オレンジボールとして認識する最小面積 (ピクセル)
+ORANGE_BALL_MIN_AREA = 50     # オレンジボールとして認識する最小面積 (ピクセル)
 MIN_ARROW_LENGTH_PIXELS = 50   # ロボット検出時に赤と緑のマーカーが離れているべき最小距離 (ピクセル)
+
+BALL_COMPENSATION_TIME = 1.0  # ボールの座標を維持する時間（秒）
 
 # --- 表示設定 ---
 WINDOW_NAME = "Detection Results"  # 表示ウィンドウのタイトル

@@ -5,7 +5,7 @@ import json
 
 # --- 設定と定数をインポート ---
 from config import (UDP_IP, UDP_PORT, REAL_CALIBRATION_DISTANCE_CM,
-                    ROBOT_MARKER_MIN_AREA, ORANGE_BALL_MIN_AREA,
+                    ROBOT_MARKER_MIN_AREA, ORANGE_BALL_MIN_AREA, BALL_COMPENSATION_TIME,
                     MIN_ARROW_LENGTH_PIXELS, WINDOW_NAME, MASK_TOGGLE_KEY)
 
 # --- 各モジュールをインポート ---
@@ -14,9 +14,14 @@ import image_processing as imgproc  # 画像処理関数
 import calibration                # キャリブレーション関連 (グローバル変数とコールバック)
 from detection import detect_robot_from_reds  # ロボット検出関数
 
+# --- 変数初期化 ---
+last_detected_orange_balls = []  # 最後に検出されたオレンジボールの座標
+last_detection_time = 0  # 最後にボールが検出された時刻
+
 
 def main():
     # --- 初期化 ---
+    global last_detection_time, last_detected_orange_balls  # グローバル変数を参照
     # UDP送信クラスのインスタンス化
     udp_sender = UDPSender(UDP_IP, UDP_PORT)
 
@@ -100,41 +105,42 @@ def main():
             red_centers, green_centers, blue_centers, "blue",
             display_frame, cm_scale, MIN_ARROW_LENGTH_PIXELS)
 
-        # --- オレンジボール検出と描画 ---
         detected_orange_balls = []
-        for (cx, cy) in orange_centers:
-            cx_centered_cm, cy_centered_cm = None, None
-            if cm_scale is not None:
-                # 中心からの相対座標 (X右正, Y上正)
-                cx_centered_cm = (cx - center_x) * cm_scale
-                cy_centered_cm = (center_y - cy) * cm_scale
+        current_time = time.time()
+        if orange_centers:
+            # ボールが検出された場合
+            for (cx, cy) in orange_centers:
+                cx_centered_cm, cy_centered_cm = None, None
+                if cm_scale is not None:
+                    # 中心からの相対座標 (X右正, Y上正)
+                    cx_centered_cm = (cx - center_x) * cm_scale
+                    cy_centered_cm = (center_y - cy) * cm_scale
 
-            # display_frame に円を描画
-            cv2.circle(display_frame, (cx, cy), 15,
-                       (0, 165, 255), 3)  # オレンジ色 BGR(Orange)
+                # display_frame に円を描画
+                cv2.circle(display_frame, (cx, cy), 15,
+                           (0, 165, 255), 3)  # オレンジ色 BGR(Orange)
 
-            # テキスト情報を準備
-            text = "Orange Ball"
-            if cm_scale is not None:
-                text += f" | CM:({cx_centered_cm:.1f},{cy_centered_cm:.1f})"
+                # CMスケールがあれば情報をリストに追加
+                if cm_scale is not None:
+                    ball_info = {
+                        "pos": (round(cx_centered_cm, 2), round(cy_centered_cm, 2))
+                    }
+                    detected_orange_balls.append(ball_info)
 
-            # テキストを描画 (白文字、黒縁)
-            text_pos = (cx + 20, cy)
-            cv2.putText(display_frame, text, text_pos,
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 0, 0), 2, cv2.LINE_AA)
-            cv2.putText(display_frame, text, text_pos,
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 1, cv2.LINE_AA)
-
-            # CMスケールがあれば情報をリストに追加
-            if cm_scale is not None:
-                ball_info = {
-                    "center_relative_cm": (round(cx_centered_cm, 2), round(cy_centered_cm, 2))
-                }
-                detected_orange_balls.append(ball_info)
+            # 検出されたボールを記録
+            last_detected_orange_balls = detected_orange_balls
+            last_detection_time = current_time
+        else:
+            # ボールが検出されなかった場合、一定時間内なら最後の座標を維持
+            if current_time - last_detection_time <= BALL_COMPENSATION_TIME:
+                detected_orange_balls = last_detected_orange_balls
+            else:
+                # 時間が経過したら座標をリセット
+                detected_orange_balls = []
 
         # --- UDP送信データの準備と送信 ---
         vision_data = {
-            "timestamp": time.time(),
+            # "timestamp": time.time(),
             "fps": round(fps, 2),
             "orange_balls": detected_orange_balls,
             "yellow_robots": yellow_robots,
@@ -184,6 +190,16 @@ def main():
                     cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 0), 2, cv2.LINE_AA)
         cv2.putText(display_frame, fps_text, (10, 25),
                     cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 1, cv2.LINE_AA)
+
+        # ボールの座標の表示
+        text = "Orange Ball"
+        if cm_scale is not None and detected_orange_balls:
+            text += f" | CM:({vision_data['orange_balls'][0]['pos'][0]:.1f},{vision_data['orange_balls'][0]['pos'][1]:.1f})"
+
+        cv2.putText(display_frame, text, (10, height - 10),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 0, 0), 2, cv2.LINE_AA)
+        cv2.putText(display_frame, text, (10, height - 10),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 1, cv2.LINE_AA)
 
         # 4. マスクビューステータス表示 (右上)
         status_text_size, _ = cv2.getTextSize(
